@@ -24,6 +24,7 @@ import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.Topology;
 import org.apache.kafka.streams.kstream.KStream;
 import org.eclipse.paho.client.mqttv3.*;
+import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -188,6 +189,11 @@ public class BME680 {
         } catch (Throwable e) {
             System.exit(1);
         }
+        try {
+            publisher.disconnect();
+        } catch (MqttException e) {
+            log.error(e.getMessage());
+        }
         System.exit(0);
     }
 
@@ -207,7 +213,8 @@ public class BME680 {
     private void initMQTT() {
         String publisherId = UUID.randomUUID().toString();
         try {
-            publisher = new MqttClient(MQTT_BROKER, publisherId);
+            MqttClientPersistence persistence = new MemoryPersistence();
+            publisher = new MqttClient(MQTT_BROKER, publisherId, persistence);
         } catch (MqttException e) {
             log.error(MQTT_FAILURE, e);
         }
