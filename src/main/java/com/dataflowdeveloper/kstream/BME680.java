@@ -28,8 +28,9 @@ import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Properties;
-import java.util.UUID;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.util.*;
 import java.util.concurrent.CountDownLatch;
 
 
@@ -63,9 +64,11 @@ public class BME680 {
     public static final String TEMPERATURE_WARNING = "Temperature warning %04.2f";
     public static final int QOS = 0;
     public static final String TEMPERATURE_IS_NORMAL = "Temperature is normal. {}";
+    public static final String TEMPERATURE_IS_HIGH = "Temperature is above normal. {}";
     public static final float TEMPERATURE_LIMIT = 75f;
     public static final String MQTT_SERVER_NOT_AVAILABLE = "MQTT Server Not Available";
     public static final String JSON_PATH = "$.bme680_tempf";
+    public static final String DIVIDER = "*******************************************";
 
     // logging
     private Logger log = LoggerFactory.getLogger(BME680.class.getSimpleName());
@@ -73,6 +76,15 @@ public class BME680 {
     // mqtt
     private IMqttClient publisher = null;
 
+    // periodic print
+    class DisplayStatus extends TimerTask {
+        public void run() {
+            DateFormat dateFormat = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss");
+            Date date = new Date();
+            System.out.println("**********" + dateFormat.format(date) + "**********" );
+            System.out.println("Memory Usage: " + (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()));
+        }
+    }
 
     /**
      * start up a process
@@ -165,6 +177,36 @@ public class BME680 {
         }
     }
 
+    /**
+     * https://www.javamex.com/tutorials/misc-system/environment-variables-listing.shtml
+     * @param m
+     */
+    private static void dumpVars(Map<String, ?> m) {
+        List<String> keys = new ArrayList<String>(m.keySet());
+        Collections.sort(keys);
+        for (String k : keys) {
+            System.out.println(k + " : " + m.get(k));
+        }
+    }
+
+    /**
+     *
+     */
+    private void buildHeader() {
+        System.out.println(DIVIDER + " Kafka Streams ");
+        System.out.println(DIVIDER + " BME680 ");
+        System.out.println("Memory Usage: " + (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()));
+        System.out.println("MQTT Broker: " + MQTT_BROKER );
+        System.out.println("MQTT Topic: " + TOPIC);
+        System.out.println("Kafka Bootstrap: " + KAFKA_BOOTSTRAP );
+        System.out.println("Kafka Topic: " + TOPIC1);
+        System.out.println(DIVIDER + " ENV VARIABLES");
+        dumpVars(System.getenv());
+        System.out.println(DIVIDER + " PROPERTIES");
+        dumpVars(new HashMap(System.getProperties()));
+        System.out.println(DIVIDER + " Started ");
+    }
+
     // bme 680
     public void start() {
         Properties props = new Properties();
@@ -172,6 +214,11 @@ public class BME680 {
         props.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, KAFKA_BOOTSTRAP);
         props.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, Serdes.String().getClass());
         props.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, Serdes.String().getClass());
+
+        buildHeader();
+
+        Timer timer = new Timer();
+        timer.schedule(new DisplayStatus(), 0, 120000);
 
         final StreamsBuilder builder = new StreamsBuilder();
         KStream<String, String> source = builder.stream(TOPIC1);
