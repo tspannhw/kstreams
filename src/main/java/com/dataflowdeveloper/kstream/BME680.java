@@ -206,7 +206,7 @@ public class BME680 {
         dumpVars(new HashMap(System.getProperties()));
         System.out.println(DIVIDER + " Started ");
     }
-
+ 
     // bme 680
     public void start() {
         Properties props = new Properties();
