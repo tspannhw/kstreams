@@ -62,6 +62,10 @@ public class BME680 {
     public static final String MQTT_PUBLISH_FAILURE = "MQTT Publish Failure";
     public static final String TEMPERATURE_WARNING = "Temperature warning %04.2f";
     public static final int QOS = 0;
+    public static final String TEMPERATURE_IS_NORMAL = "Temperature is normal. {}";
+    public static final float TEMPERATURE_LIMIT = 75f;
+    public static final String MQTT_SERVER_NOT_AVAILABLE = "MQTT Server Not Available";
+    public static final String JSON_PATH = "$.bme680_tempf";
 
     // logging
     private Logger log = LoggerFactory.getLogger(BME680.class.getSimpleName());
@@ -83,46 +87,46 @@ public class BME680 {
 
     /**
      * output values if large to mqtt
-     *
+     * <p>
      * Example value if JSON
-
-     {
-     "systemtime" : "12/19/2018 22:15:56",
-     "BH1745_green" : "4.0",
-     "ltr559_prox" : "0000",
-     "end" : "1545275756.7",
-     "uuid" : "20181220031556_e54721d6-6110-40a6-aa5c-72dbd8a8dcb2",
-     "lsm303d_accelerometer" : "+00.06g : -01.01g : +00.04g",
-     "imgnamep" : "images/bog_image_p_20181220031556_e54721d6-6110-40a6-aa5c-72dbd8a8dcb2.jpg",
-     "cputemp" : 51.0,
-     "BH1745_blue" : "9.0",
-     "te" : "47.3427119255",
-     "bme680_tempc" : "28.19",
-     "imgname" : "images/bog_image_20181220031556_e54721d6-6110-40a6-aa5c-72dbd8a8dcb2.jpg",
-     "bme680_tempf" : "82.74",
-     "ltr559_lux" : "006.87",
-     "memory" : 34.9,
-     "VL53L1X_distance_in_mm" : 134,
-     "bme680_humidity" : "23.938",
-     "host" : "vid5",
-     "diskusage" : "8732.7",
-     "ipaddress" : "192.168.1.167",
-     "bme680_pressure" : "1017.31",
-     "BH1745_clear" : "10.0",
-     "BH1745_red" : "0.0",
-     "lsm303d_magnetometer" : "+00.04 : +00.34 : -00.10",
-     "starttime" : "12/19/2018 22:15:09"
-     }
-
+     * <p>
+     * {
+     * "systemtime" : "12/19/2018 22:15:56",
+     * "BH1745_green" : "4.0",
+     * "ltr559_prox" : "0000",
+     * "end" : "1545275756.7",
+     * "uuid" : "20181220031556_e54721d6-6110-40a6-aa5c-72dbd8a8dcb2",
+     * "lsm303d_accelerometer" : "+00.06g : -01.01g : +00.04g",
+     * "imgnamep" : "images/bog_image_p_20181220031556_e54721d6-6110-40a6-aa5c-72dbd8a8dcb2.jpg",
+     * "cputemp" : 51.0,
+     * "BH1745_blue" : "9.0",
+     * "te" : "47.3427119255",
+     * "bme680_tempc" : "28.19",
+     * "imgname" : "images/bog_image_20181220031556_e54721d6-6110-40a6-aa5c-72dbd8a8dcb2.jpg",
+     * "bme680_tempf" : "82.74",
+     * "ltr559_lux" : "006.87",
+     * "memory" : 34.9,
+     * "VL53L1X_distance_in_mm" : 134,
+     * "bme680_humidity" : "23.938",
+     * "host" : "vid5",
+     * "diskusage" : "8732.7",
+     * "ipaddress" : "192.168.1.167",
+     * "bme680_pressure" : "1017.31",
+     * "BH1745_clear" : "10.0",
+     * "BH1745_red" : "0.0",
+     * "lsm303d_magnetometer" : "+00.04 : +00.34 : -00.10",
+     * "starttime" : "12/19/2018 22:15:09"
+     * }
+     *
      * @param key
      * @param value
      */
     public void processValues(String key, String value) {
-        log.info("Key {} Value {}", key, value);
+        log.debug("Key {} Value {}", key, value);
 
-        if (!publisher.isConnected()) {
-            log.warn("MQTT Server Not Available");
-            return;
+        if ( this.publisher == null || !this.publisher.isConnected()) {
+            log.warn(MQTT_SERVER_NOT_AVAILABLE);
+            this.initMQTT();
         }
 
         String mqttMessage = null;
@@ -133,7 +137,7 @@ public class BME680 {
 
             // we send either entire JSON string or just the temperature via kafka to kstream
             if (value.contains("{")) {
-                temperature = JsonPath.read(value, "$.bme680_tempf");
+                temperature = JsonPath.read(value, JSON_PATH);
             } else {
                 temperature = value.trim();
             }
@@ -141,17 +145,22 @@ public class BME680 {
             bme680Temperature = Float.parseFloat(temperature);
 
             // just numeric value
-            if (bme680Temperature != null && bme680Temperature.floatValue() > 80f) {
+            if (bme680Temperature != null && bme680Temperature.floatValue() > TEMPERATURE_LIMIT) {
                 mqttMessage = String.format(TEMPERATURE_WARNING, bme680Temperature.floatValue());
             }
+            else {
+                log.debug(TEMPERATURE_IS_NORMAL, temperature);
+            }
 
-            MqttMessage msg = new MqttMessage(mqttMessage.getBytes());
-            msg.setQos(QOS);
-            msg.setRetained(true);
-            try {
-                this.publisher.publish(TOPIC, msg);
-            } catch (MqttException e) {
-                log.error(MQTT_PUBLISH_FAILURE, e);
+            if (mqttMessage != null && this.publisher != null) {
+                MqttMessage msg = new MqttMessage(mqttMessage.getBytes());
+                msg.setQos(QOS);
+                msg.setRetained(true);
+                try {
+                    this.publisher.publish(TOPIC, msg);
+                } catch (MqttException e) {
+                    log.error(MQTT_PUBLISH_FAILURE, e);
+                }
             }
         }
     }
